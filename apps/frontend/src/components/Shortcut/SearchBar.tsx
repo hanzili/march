@@ -1,16 +1,18 @@
 "use client"
 import React, { useState, useEffect } from "react"
-
-interface Item {
-  title: string
-}
+import axios from "axios"
+import { BACKEND_URL } from "../../lib/constants/urls"
+import { useAuth } from "../../contexts/AuthContext"
+import { Item } from "../../lib/@types/Items/Item"
+import { useSpace } from "../../hooks/useSpace"
 
 const SearchComponent = () => {
   const [isSearchVisible, setIsSearchVisible] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [searchResults, setSearchResults] = useState<Item[]>([])
   const [isLoading, setIsLoading] = useState(false)
-
+  const { session } = useAuth()
+  const spaces = useSpace()
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.metaKey && event.key === "s") {
@@ -34,23 +36,24 @@ const SearchComponent = () => {
     }
   }, [isSearchVisible])
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSearch = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value)
     if (e.target.value.length > 0) {
       setIsLoading(true)
       setSearchResults([])
-      setTimeout(() => {
-        const simulatedResults =
-          "meeting".includes(e.target.value.toLowerCase())
-            ? [
-                { title: "Send a summary of the meeting to..." },
-                { title: "demo of meeting" },
-              ]
-            : []
-
-        setSearchResults(simulatedResults)
+      try {
+        const response = await axios.get(`${BACKEND_URL}/api/items/search?q=${e.target.value}`, {
+          headers: {
+            Authorization: `Bearer ${session}`,
+          },
+        })
+        setSearchResults(response.data.items)
+      } catch (error) {
+        console.error("Error searching items:", error)
+        // Optionally set an error state here
+      } finally {
         setIsLoading(false)
-      }, 1000)
+      }
     } else {
       setSearchResults([])
     }
@@ -59,38 +62,52 @@ const SearchComponent = () => {
   return (
     <div>
       {isSearchVisible && (
-        <div>
-          {/* Dark overlay */}
-          <div className="fixed inset-0 bg-black bg-opacity-70"></div>
+        <div className="fixed inset-0 z-50"> {/* Added z-50 for highest priority */}
+          {/* Blur overlay */}
+          <div className="absolute inset-0 backdrop-blur-sm"></div>
 
           {/* Search bar modal */}
-          <div className="fixed inset-0 flex flex-col items-center">
-            <div className="search-bar bg-background text-foreground w-1/2 p-4 rounded-lg mt-[10%]">
-              <input
-                type="text"
-                placeholder="Search"
-                value={searchTerm}
-                onChange={handleSearch}
-                className="w-full p-2 bg-background text-foreground rounded-lg focus:outline-none text-lg"
-                autoFocus
-              />
+          <div className="absolute inset-0 flex flex-col items-center">
+            <div className="search-bar bg-background text-foreground w-1/2 rounded-lg border border-secondary-foreground overflow-hidden mt-[20vh] relative z-10"> {/* Added z-10 to ensure it's above the blur */}
+              <div className="flex items-center">
+                <input
+                  type="text"
+                  placeholder="Search"
+                  value={searchTerm}
+                  onChange={handleSearch}
+                  className="w-full p-4 bg-background text-foreground focus:outline-none text-lg"
+                  autoFocus
+                />
+                <span className="absolute right-4 text-secondary-foreground text-sm whitespace-nowrap overflow-hidden text-ellipsis">
+                  press ↵ to go to
+                </span>
+              </div>
+              {/* Separator line */}
+              <div className="border-t border-secondary-foreground"></div>
               {isLoading ? (
-                <div className="text-secondary-foreground mt-4">
+                <div className="p-4 text-secondary-foreground">
                   Searching...
                 </div>
               ) : searchTerm.length > 0 && searchResults.length === 0 ? (
-                <div className="text-secondary-foreground mt-4">
+                <div className="p-4 text-secondary-foreground">
                   Nothing found.
                 </div>
               ) : (
                 <ul>
-                  {searchResults.map((result, index) => (
+                  {searchResults.map((result) => (
                     <li
-                      key={index}
-                      className="flex items-center p-3 mt-4 rounded-lg"
+                      key={result._id}
+                      className="flex items-center p-4 hover:bg-secondary/10"
                     >
-                      <input type="checkbox" className="mr-3" />
-                      {result.title}
+                      <div className="flex-grow">
+                        <div className="text-foreground">{result.title}</div>
+                        <div className="text-secondary-foreground text-sm">{result.description}</div>
+                      </div>
+                      {result.spaces.length > 0 && spaces && (
+                        <div className="text-secondary-foreground text-xs">
+                          {spaces[result.spaces[0]]?.name || 'Unknown Space'}
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
